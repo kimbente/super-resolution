@@ -2,6 +2,8 @@
 # ----------------------------------------------------------------------------
 # NSIDC Data Download Script
 #
+# KB: wget --http-user=kimbente --ask-password -np BedMachineAntarctica-v3.nc -P /home/kim/data/nsidc https://n5eil01u.ecs.nsidc.org/MEASURES/NSIDC-0756.003/1970.01.01/BedMachineAntarctica-v3.nc
+#
 # Copyright (c) 2023 Regents of the University of Colorado
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the "Software"),
