@@ -1,0 +1,69 @@
+\title{Bayesian Fusion equations}
+
+### Reid, Alistair, Fabio Ramos, and Salah Sukkarieh. "Bayesian Fusion for Multi-Modal Aerial Images." Robotics: Science and Systems. 2013.
+[link to paper](https://citeseerx.ist.psu.edu/document?repid=rep1&type=pdf&doi=89c7a83a8b9a99240c33b9d49d330755d071ae53)
+
+## Predictive mean
+
+\begin{aligned}
+\quad P_{*}\left(A_{H}\right)= \mu+k\left(A_{H}, A_{L}\right)\left[k\left(A_{L}, A_{L}\right)+\sigma_{n}^{2} \mathbf{I}\right]^{-1}\left(P_{L}\left(A_{L}\right)-\mu\right)
+\end{aligned}
+
+## Covariance function (kernel):
+
+\begin{aligned}
+\quad k\left(A_{H}, A_{H}^{\prime}\right)=\sigma_{f}^{2} k_{S}\left(A_{H}, A_{H}^{\prime}\right) k_{P}\left(P_{H}\left(A_{H}\right), P_{H}\left(A_{H}^{\prime}\right)\right)
+\end{aligned}
+
+## Spatial kernel
+
+\begin{aligned}
+\quad k_{S}\left(A_{H}, A_{H}^{\prime}\right)=\left\{\begin{array}{cc}
+(1-Z)^{3}(3 Z+1) & Z<1 \\
+0 & Z \geq 1
+\end{array}\right\}
+\end{aligned}
+
+### With Z
+
+\begin{aligned}
+Z=\frac{\left|\operatorname{mid}\left(A_{H}\right)-\operatorname{mid}\left(A_{H}^{\prime}\right)\right|}{\lambda_{S}}
+\end{aligned}
+
+## Pixel-intesity kernel
+
+\begin{aligned}
+k_{P}\left(P_{H}\left(A_{H}\right), P_{H}\left(A_{H}^{\prime}\right)\right)=\exp \left\{-\frac{\left(P_{H}\left(A_{H}\right)-P_{H}\left(A_{H}^{\prime}\right)\right)^{2}}{2 \lambda_{P}^{2}}\right\}\
+\end{aligned}
+
+## Pixel correction (weighting)
+
+\begin{aligned}
+& W=k\left(A_{H}, A_{L}\right)\left[k\left(A_{L}, A_{L}\right)+\sigma_{n}^{2} \mathbf{I}\right]^{-1} \\
+\end{aligned}
+
+\begin{aligned}
+& P_{*}^{c}\left(A_{H}\right)=.5+\frac{W\left(P_{L}\left(A_{L}\right)-0.5\right)}{W\left[\begin{array}{lll}
+1 & \cdots & 1
+\end{array}\right]^{\top}}
+\end{aligned}
+
+## Log marginal likelihood
+
+\begin{aligned}
+\log (p(\mathbf{y} \mid \mathbf{X}, \theta))=-\frac{1}{2} \mathbf{y}^{T} K_{X}^{-1} \mathbf{y}-\frac{1}{2} \log \left|K_{X}\right|-\frac{N}{2} \log 2 \pi .
+\end{aligned}
+
+## Predictive
+
+\begin{aligned}
+\mu^{*} & =k\left(X^{*}, X\right) K_{X}^{-1} \mathbf{y}, 
+\end{aligned}
+
+\begin{aligned}
+\Sigma^{*} & =k\left(\mathbf{X}^{*}, \mathbf{X}^{*}\right)-k\left(\mathbf{X}^{*}, \mathbf{X}\right) K_{X}^{-1} k\left(X, X^{*}\right),
+\end{aligned}
+
+\begin{aligned}
+\text{the end.}
+\end{aligned}

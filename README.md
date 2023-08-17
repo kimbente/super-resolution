@@ -19,6 +19,7 @@ Data fusions of high-resolution gridded data with low-resolutions gridded data w
     - [Documentation](https://nsidc.org/sites/default/files/nsidc-0756-v002-userguide_1.pdf)
     - Controlled experiment: upsample and evaluate reconstruction
 
+
 Alternative:
 - High-resolution image/channel: Antarctica Ice Velocity (satellite-based surface data) [MEaSUREs InSAR-Based Antarctica Ice Velocity Map, Version 2 data](https://nsidc.org/data/nsidc-0484/versions/2)
     - On 450m grid (perfrom 10x magnification)
@@ -40,6 +41,10 @@ Alternative:
 - role of geophysical data e.g. altitude
 - Use surface elevation to improve resolution of ice flow: measured in 2 directions
   - Physics informed kernel?
+
+
+High-res data sets can be considered auxiliary datasets: Use multiple aux. data streams (potentially on different resolutions) to refine the low-res. channel: 
+- spatially varying "weightings" for refining. 
 
 # References
 
