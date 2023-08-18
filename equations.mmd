@@ -42,6 +42,7 @@ k_{P}\left(P_{H}\left(A_{H}\right), P_{H}\left(A_{H}^{\prime}\right)\right)=\exp
 & W=k\left(A_{H}, A_{L}\right)\left[k\left(A_{L}, A_{L}\right)+\sigma_{n}^{2} \mathbf{I}\right]^{-1} \\
 \end{aligned}
 
+The corrected precdictive mean (numerator is a product term)
 \begin{aligned}
 & P_{*}^{c}\left(A_{H}\right)=.5+\frac{W\left(P_{L}\left(A_{L}\right)-0.5\right)}{W\left[\begin{array}{lll}
 1 & \cdots & 1
@@ -62,6 +63,17 @@ k_{P}\left(P_{H}\left(A_{H}\right), P_{H}\left(A_{H}^{\prime}\right)\right)=\exp
 
 \begin{aligned}
 \Sigma^{*} & =k\left(\mathbf{X}^{*}, \mathbf{X}^{*}\right)-k\left(\mathbf{X}^{*}, \mathbf{X}\right) K_{X}^{-1} k\left(X, X^{*}\right),
+\end{aligned}
+
+
+## Covariances between low and high resolution pixels
+
+\begin{aligned}
+k\left(A_{H}, A_{L}^{\prime}\right)=\frac{1}{N_{H}} \sum_{A_{H}^{\prime} \in A_{L}^{\prime}} k\left(A_{H}, A_{H}^{\prime}\right),
+\end{aligned}
+
+\begin{aligned}
+k\left(A_{L}, A_{L}^{\prime}\right)=\frac{1}{N_{H} N_{H}^{\prime}} \sum_{A_{H} \in A_{L}} \sum_{A_{H}^{\prime} \in A_{L}^{\prime}} k\left(A_{H}, A_{H}^{\prime}\right) .
 \end{aligned}
 
 \begin{aligned}
