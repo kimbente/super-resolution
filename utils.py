@@ -30,7 +30,7 @@ def upscale_tensor(tensor, upscaling_factor):
     # define upscaling function with torch https://pytorch.org/docs/stable/generated/torch.nn.AvgPool2d.html
     upscale = torch.nn.AvgPool2d(kernel_size = upscaling_factor)
 
-    # apply upscalin g
+    # apply upscaling
     upscaled_tensor = upscale(tensor)
 
     # remove explicit first dimension again
