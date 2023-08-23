@@ -6,8 +6,8 @@ Data fusions of high-resolution gridded data with low-resolutions gridded data w
 
 ## Table of Contents
 
-- equations.mmd conatins equations used from paper
-
+- **equations.mmd** conatins equations from Reid et al. 2013 paper implemented in code.
+- **domain_visualisation.ipynb** defined the two domains and visualises them on an Antarctic scale map.
 
 ## Data
 - Antarctic ice velocity - [MEaSUREs Phase-Based Antarctica Ice Velocity Map, Version 1,(NSIDC-0754)](https://nsidc.org/data/nsidc-0754/versions/1)
@@ -20,7 +20,7 @@ Data fusions of high-resolution gridded data with low-resolutions gridded data w
     - down-stream BO application
 
 
-- Antarctic bed elevation - [MEaSUREs BedMachine Antarctica, Version 3, (NSIDC-0756)](https://nsidc.org/data/nsidc-0756/versions/3)
+- Antarctic bed elevation / surface elevation - [MEaSUREs BedMachine Antarctica, Version 3, (NSIDC-0756)](https://nsidc.org/data/nsidc-0756/versions/3)
     - 500m resolution
     - [documentation](https://nsidc.org/sites/default/files/nsidc-0756-v002-userguide_1.pdf)
     - contains surface elevation, ice thickness, bed elevation (topography), firn air content

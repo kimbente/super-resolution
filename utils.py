@@ -65,3 +65,89 @@ def mse(image1, image2):
     mean_squared_error = torch.mean(squared_error_tensor)
 
     return(mean_squared_error)
+
+#############
+### SHAPE ###
+#############
+
+def midpoint_to_box(yx_tensor):
+    """_summary_
+
+    Args:
+        yx_tensor (torch.tensor): [C, H, W] tensor where C_1 is y and C_2 is x
+    
+    Returns:
+        torch.tensor: 4-channel tensor (box-channel) y_min, y_max, x_min, x_max
+    """
+    # Separate both tensors
+    y_tensor = yx_tensor[0, :, :] # [H, W]
+    x_tensor = yx_tensor[1, :, :] # [H, W]
+
+    # integer; y direction is reversed to obtain positive step value.
+    y_step = int(y_tensor[0, 0] - y_tensor[1, 0])
+    x_step = int(x_tensor[0, 1] - x_tensor[0, 0])
+
+    ### Y MIN MAX ###
+    # y_min is the lower edge of the cell.
+    y_min = y_tensor - (y_step / 2)
+    # y_max is the top edge of the cell.
+    y_max = y_tensor + (y_step / 2)
+
+    ### X MIN MAX ###
+    # x_min is the left edge of the cell.
+    x_min = x_tensor - (x_step / 2)
+    # x_max is the right edge of the cell.
+    x_max = x_tensor + (x_step / 2)
+
+    return(torch.cat((y_min.unsqueeze(0),
+                     y_max.unsqueeze(0),
+                     x_min.unsqueeze(0), 
+                     x_max.unsqueeze(0)),
+                     dim = 0))
+
+
+def upscale_box_tensor(tensor, upscaling_factor):
+    """ Upscaling is the opposite of downscaling: We are increasing the scale of each grid cell represented by the value by mean aggregation. 
+        From in input higher resolution tensor a lower resolution tensor is returned. 
+
+    Args:
+        tensor (torch.tensor): high-res. input 3D tensor where [C, H, W] where C is pixel_dim + box_dim (4)
+        upscaling_factor (int): number of vertical and horizontal field to convolve over.
+
+    Returns:
+        torch.tensor: low-res. output 3D tensor with updated box variables as the last 4 channels.
+    """
+    pixel_dim = tensor.shape[0] - 4 
+    # box_dim = 4 is implicitly "hardcoded" into the structure of this function for the rectilinear case: box edges
+
+    # Warning if upscaling is not perfect
+    if (((tensor.shape[-1] % upscaling_factor) != 0) or ((tensor.shape[-2] % upscaling_factor) != 0)):
+        print("ACHTUNG: Upscaling is not closed/has remainder: Mean aggregation is over fields of different sizes. Consider using a different magnification factor.")
+        # exit because box upscaling does not work
+        exit
+
+    # Initialise empty target tensor to append to
+    target_tensor = torch.empty(size = (0, int(tensor.shape[-2] / upscaling_factor) , int(tensor.shape[-1] / upscaling_factor)))
+
+    # define upscaling function with torch https://pytorch.org/docs/stable/generated/torch.nn.AvgPool2d.html
+    # We upscale the same amount in x & y direction: square window
+    upscale = torch.nn.AvgPool2d(kernel_size = upscaling_factor)
+
+    # Loop through pixel_dim and upscale each
+    for i in range(0, pixel_dim):
+        # need to reassign to variable name. torch.cat() is not inplace
+        target_tensor = torch.cat((target_tensor, upscale(tensor[i, :, :].unsqueeze(0))), dim = 0)
+
+    # define max_pool function with same kernel_size as upscaling
+    max_pool = torch.nn.MaxPool2d(kernel_size = upscaling_factor)
+
+    # y_min: No min pooling function: double negative
+    target_tensor = torch.cat((target_tensor, (- max_pool(- tensor[pixel_dim, :, :].unsqueeze(0)))), dim = 0)
+    # y_max
+    target_tensor = torch.cat((target_tensor, (max_pool(tensor[(pixel_dim + 1), :, :].unsqueeze(0)))), dim = 0)
+    # x_min
+    target_tensor = torch.cat((target_tensor, (- max_pool(- tensor[(pixel_dim + 2), :, :].unsqueeze(0)))), dim = 0)
+    # x_max
+    target_tensor = torch.cat((target_tensor, (max_pool(tensor[(pixel_dim + 3), :, :].unsqueeze(0)))), dim = 0)
+
+    return target_tensor
