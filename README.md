@@ -30,6 +30,22 @@ Data fusions of high-resolution gridded data with low-resolutions gridded data w
     - The nominal year of this data set is 2015 — the year of the reference surface digital elevation model (REMA).
     - Note: Ice flow velocity derived from satellite interferometry (Rignot et al., 2011; Mouginot et al., 2017).
 
+## Next steps:
+- Organise code repository, 
+- Use auxiliary high-resolution surface data to downscale ice velocity (1 to 1) (currently using surface to increase bedrock resolution)
+  - Integrate auxiliary high-resolution bed data
+- LML for parameters
+- Baseline Experiment:
+  - Set-up metrics
+  - Benchmarks
+  - Try various upscaling factors
+  - for all scenes in both domains
+- Use multiple auxiliary inputs
+  - Also use derivatives
+- CNN to map between auxiliary covariances (e.g. multiple) and target covariances (Gram matrix space)
+  - Initialise kernel weight according to spatial/vision tricks like edge detection. Nudging
+
+
 ## Benchmarks
 - Streamline diffusion is used in BedMachine for it's anisotropic qualities. 
 - Bilinear interpolation (https://pytorch.org/docs/stable/generated/torch.nn.functional.grid_sample.html)
@@ -64,6 +80,11 @@ Data fusions of high-resolution gridded data with low-resolutions gridded data w
   - Conversion tool
     - Dome C: X 1359993 Y -894443
 - Project units of error (MSE) back to original domain
+- Also look at uncertainty not just at predeictive mean (downstream tasks)
+- Name of paper: "Melting moments - derivate kernel fusion"
+- Use noise values from dataset
+- Investigate vanishing covariance with pooling over larger area (downscaling factor large)
+
   
 
 High-res data sets can be considered auxiliary datasets: Use multiple aux. data streams (potentially on different resolutions) to refine the low-res. channel: 
