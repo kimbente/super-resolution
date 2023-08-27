@@ -151,3 +151,286 @@ def upscale_box_tensor(tensor, upscaling_factor):
     target_tensor = torch.cat((target_tensor, (max_pool(tensor[(pixel_dim + 3), :, :].unsqueeze(0)))), dim = 0)
 
     return target_tensor
+
+##############################
+### Covariance aggregation ###
+##############################
+
+def aggregation_dictionaries(hr_matrix, lr_2D):
+
+    ### Check that hr_matrix (base_covariance matrix) covers sufficient area
+    # y_min: rows and columns contain the same so choose row. Could find min based on on position but use torch.min instead
+    if ((torch.min(lr_2D[0, :, :]) < torch.min(hr_matrix[1, :, :])) or # min of y_min
+        (torch.max(lr_2D[1, :, :]) > torch.max(hr_matrix[2, :, :])) or # max of y_max
+        (torch.min(lr_2D[2, :, :]) < torch.min(hr_matrix[3, :, :])) or # min of x_min
+        (torch.max(lr_2D[3, :, :]) > torch.max(hr_matrix[4, :, :]))): # max of x_max
+        print("We have an issue. The lr area is not covered by the hr area")
+    
+    # Number of cells spanned by a_l might vary. Thus tensor strucuture not ideal
+    # dict for each output covariance value with area (for weighting) and with values
+
+    # Flatten lr shape
+    lr = lr_2D.reshape(4, -1)
+
+    # Extract dimensionalities of each for the loop
+    hr_dims_flat = np.array(hr_matrix.shape)[-1]
+    lr_dims_flat = np.array(lr).shape[-1]
+
+    # Create two dictionaries with empty lists that you can append to
+    covariance_index_dict = {(lr_index): [] for lr_index in range(0, lr_dims_flat)}
+    weights_dict = {(lr_index): [] for lr_index in range(0, lr_dims_flat)}
+
+    joker = 0
+
+    for i in range(0, lr_dims_flat):
+        # Check overlap between lr and "columns" of hr (last 4 channels) of hr_matrix
+        # both axis (y and x) need to overlap for there to be an area.
+        for j in range(0, hr_dims_flat):
+            # First: check y overlap. If hr_y_max < lr_y_min -> no y overlap or hr_y_min > lr_y_max
+            # (hr_matrix[:, 0, :] select random row (here 0) since y_max values don't 
+            if ((hr_matrix[6, joker, j] <= lr[0, i]) or # hr y_max <= lr y_min
+                (hr_matrix[5, joker, j] >= lr[1, i])): # hr y_min >= lr y_max
+                # NO y overlap, move to next column.
+                j += 1
+                # Note: computionally cheaper if we check one first
+            elif ((hr_matrix[5, joker, j] < lr[1, i]) & # lr y_min <= hr y_min < lr_y_max
+                  (hr_matrix[5, joker, j] >= lr[0, i])):
+                # YES y overlap, may be partial or full
+                if (hr_matrix[6, joker, j] <= lr[1, i]): # if hr y_max <= lr y_max
+                    # YES full y overlap
+
+                    ### x block ###
+                    if ((hr_matrix[8, joker, j] <= lr[2, i]) or # hr x_max <= lr x_min
+                        (hr_matrix[7, joker, j] >= lr[3, i])): # hr x_min >= lr x_max
+                        # NO x overlap, move to next column
+                        j += 1
+                    elif ((hr_matrix[8, joker, j] > lr[2, i]) &  # hr x_max > lr x_min
+                          (hr_matrix[8, joker, j] <= lr[3, i])): # hr x_max <= lr x_max
+                        # YES x overlap, may be partial or full
+                        if (hr_matrix[7, joker, j] >= lr[2, i]): # hr x_min >= lr x_min
+                            # FULL y and FULL x overlap:
+                            A = (hr_matrix[6, joker, j] - hr_matrix[5, joker, j]) * (hr_matrix[8, joker, j] - hr_matrix[7, joker, j]) # (hr y_max - hr y_min) * (hr x_max - hr x_min)
+                            V = hr_matrix[6, :, j] # Vector of values
+
+                            # Append covariance index to covariance index dictionary
+                            covariance_index_dict[i].append(j)
+                            # Append Area to weights dict
+                            weights_dict[i].append(A)
+
+                            j += 1
+                        else:
+                            # FULL y and partial x overlap (hr extending leftwards of lr in x direction)
+                            A = (hr_matrix[6, joker, j] - hr_matrix[5, joker, j]) * (hr_matrix[8, joker, j] - lr[2, i]) # (hr y_max - hr y_min) * (hr x_max - lr x_min)
+                            V = hr_matrix[0, :, j] # Vector of values
+
+                            # Append covariance index to covariance index dictionary
+                            covariance_index_dict[i].append(j)
+                            # Append Area to weights dict
+                            weights_dict[i].append(A)
+                        
+                            j += 1
+                    elif ((hr_matrix[7, joker, j] >= lr[2, i]) & # lr x_min <= hr x_min < lr x_max
+                          (hr_matrix[7, joker, j] < lr[3, i])):
+                        # FULL y and partial x overlap: (hr extending rightwards of lr in x direction)
+
+                        A = (hr_matrix[6, joker, j] - hr_matrix[5, joker, j]) * (lr[3, i] - hr_matrix[7, joker, j]) # (hr y_max - hr y_min) * (lr x_max - hr x_min)
+                        V = hr_matrix[0, :, j] # Vector of values. channel 0, all rows, current column
+
+                        # Append covariance index to covariance index dictionary
+                        covariance_index_dict[i].append(j)
+                        # Append Area to weights dict
+                        weights_dict[i].append(A)
+
+                        j += 1
+                    else:
+                        print("We didn't catch this case.")
+                    ### x block end ###
+
+                else:
+                    # YES partial y overlap.
+                    
+                    ### x block ###
+                    if ((hr_matrix[8, joker, j] <= lr[2, i]) or # hr x_max <= lr x_min
+                        (hr_matrix[7, joker, j] >= lr[3, i])): # hr x_min >= lr x_max
+                        # NO x overlap, move to next column
+                        j += 1
+                    elif ((hr_matrix[8, joker, j] > lr[2, i]) &  # hr x_max > lr x_min
+                          (hr_matrix[8, joker, j] <= lr[3, i])): # hr x_max <= lr x_max
+                        # YES x overlap, may be partial or full
+                        if (hr_matrix[7, joker, j] >= lr[2, i]): # hr x_min >= lr x_min
+                            # Partial y and FULL x overlap (with hr extending upwards of lr)
+
+                            A = (lr[1, i] - hr_matrix[5, joker, j]) * (hr_matrix[8, joker, j] - hr_matrix[7, joker, j]) # (lr y_max - hr y_min) * (hr x_max - hr x_min)
+                            V = hr_matrix[0, :, j] # Vector of values. channel 0, all rows, current column
+
+                            # Append covariance index to covariance index dictionary
+                            covariance_index_dict[i].append(j)
+                            # Append Area to weights dict
+                            weights_dict[i].append(A)
+
+                            j += 1
+                        else:
+                            # Partial y and partial x overlap: (with hr extending upwards of lr in y direction, and hr extending leftwards of lr in x direction)
+
+                            A = (lr[1, i] - hr_matrix[5, joker, j]) * (hr_matrix[8, joker, j] - lr[2, i]) # (lr y_max - hr y_min) * (hr x_max - lr x_min)
+                            V = hr_matrix[0, :, j] # Vector of values. channel 0, all rows, current column
+
+                            # Append covariance index to covariance index dictionary
+                            covariance_index_dict[i].append(j)
+                            # Append Area to weights dict
+                            weights_dict[i].append(A)
+
+                            j += 1
+                    elif ((hr_matrix[7, joker, j] >= lr[2, i]) & # lr x_min <= hr x_min < lr x_max
+                          (hr_matrix[7, joker, j] < lr[3, i])):
+                        # Partial y and partial x overlap: (with hr extenting upwards in y direction, with hr extending rightwards of lr in x sirection)
+
+                        A = (lr[1, i] - hr_matrix[5, joker, j]) * (lr[3, i] - hr_matrix[7, joker, j]) # (lr y_max - hr y_min) * (lr x_max - hr x_min)
+                        V = hr_matrix[0, :, j] # Vector of values. channel 0, all rows, current column
+
+                        # Append covariance index to covariance index dictionary
+                        covariance_index_dict[i].append(j)
+                        # Append Area to weights dict
+                        weights_dict[i].append(A)
+                    
+                        j += 1
+                    else:
+                        print("We didn't catch this case.")
+                    ### x block end ###
+
+            elif ((hr_matrix[6, joker, j] > lr[0, i]) & # lr y_min < hr y_max <= lr_y_max
+                  (hr_matrix[6, joker, j] <= lr[1, i])):
+                  # YES partial y overlap.
+                
+                    ### x block ###
+                    if ((hr_matrix[8, joker, j] <= lr[2, i]) or # hr x_max <= lr x_min
+                        (hr_matrix[7, joker, j] >= lr[3, i])): # hr x_min >= lr x_max
+                        # NO x overlap, move to next column
+                        j += 1
+                    elif ((hr_matrix[8, joker, j] > lr[2, i]) &  # hr x_max > lr x_min
+                          (hr_matrix[8, joker, j] <= lr[3, i])): # hr x_max <= lr x_max
+                        # YES x overlap, may be partial or full
+                        if (hr_matrix[7, joker, j] >= lr[2, i]): # hr x_min >= lr x_min
+                            # Partial y and FULL x overlap: (with hr extending downwards of lr in y direction)
+                            
+                            A = (hr_matrix[6, joker, j] - lr[0, i]) * (hr_matrix[8, joker, j] - hr_matrix[7, joker, j]) # (hr y_max - lr y_min) * (hr x_max - hr x_min)
+                            V = hr_matrix[0, :, j] # Vector of values. channel 0, all rows, current column
+
+                            # Append covariance index to covariance index dictionary
+                            covariance_index_dict[i].append(j)
+                            # Append Area to weights dict
+                            weights_dict[i].append(A)
+
+                            j += 1
+
+                        else:
+                            # Partial y and partial x overlap: (with hr extending downwards of lr in y direction, and with hr extending leftwars in x direction)
+                            A = (hr_matrix[6, joker, j] - lr[0, i]) * (hr_matrix[8, joker, j] - lr[2, i]) # (hr y_max - lr y_min) * (hr x_max - lr x_min)
+                            V = hr_matrix[0, :, j] # Vector of values. channel 0, all rows, current column
+
+                            # Append covariance index to covariance index dictionary
+                            covariance_index_dict[i].append(j)
+                            # Append Area to weights dict
+                            weights_dict[i].append(A)
+                    
+                            j += 1
+                    elif ((hr_matrix[7, joker, j] >= lr[2, i]) & # lr x_min <= hr x_min < lr x_max
+                          (hr_matrix[7, joker, j] < lr[3, i])):
+                        # Partial y and partial x overlap: (with hr extending downwards of lr in y direction, with hr extending rightwards of lr in x direction)
+
+                        A = (hr_matrix[6, joker, j] - lr[0, i]) * (lr[3, i] - hr_matrix[7, joker, j]) # (hr y_max - lr y_min) * (lr x_max - hr x_min)
+                        V = hr_matrix[0, :, j] # Vector of values. channel 0, all rows, current column
+
+                        # Append covariance index to covariance index dictionary
+                        covariance_index_dict[i].append(j)
+                        # Append Area to weights dict
+                        weights_dict[i].append(A)
+                    
+                        j += 1
+                    else:
+                        print("We didn't catch this case.")
+                    ### x block end ###
+
+            else:
+                print("We didn't catch this case.")
+        
+    return covariance_index_dict, weights_dict
+
+
+################
+
+def aggregate_base_covariance_matrix(hr_matrix, lr_2D):
+    """Aggregate the base covariance matrix into k_ah_al, and k_al_al. Box-channel representations required (as opposed to mid-points)
+    Assuming symmetry.
+    aggregation_dictionaries
+
+    Args:
+        hr_matrix (torch.tensor): shape [9, hr_dims_flat, hr_dims_flat]. base covariance matrix (high-resolution). 9 channels are 1 + 4 + 4/
+        lr_2D (torch.tensor): shape [4, lr_dims, lr_dims]. Low resolution box-channels: y_min, y_max, x_min, x_max for every target grid cell. 
+
+    Returns:
+        torch.tensor: k_ah_al_tensor, 
+        torch.tensor: k_al_al_tensor
+    """
+
+    # Flatten lr shape: box is 4
+    lr_flat = lr_2D.reshape(4, -1)
+
+    # Extract dimensionalities of each for the loop
+    hr_dims_flat = np.array(hr_matrix.shape)[-1]
+    lr_dims_flat = np.array(lr_flat.shape)[-1]
+
+    covariance_indices_dict, weights_dict = aggregation_dictionaries(hr_matrix, lr_2D)
+    
+    ###############
+    ### k_ah_al ###
+    ###############
+
+    # Initilise new empty tensor with correct number of rows
+    k_ah_al_tensor = torch.empty(size = (hr_dims_flat, 0))
+
+    for i in range(0, lr_dims_flat):
+
+        # Normaliser is the area of the target grid cell (constant for regular grids)
+        weight_normaliser = torch.sum(torch.tensor(weights_dict[i], dtype = float))
+
+        # Normlised weights: torch.Size([n, 1]) where n can vary based on the number over overlapping grid cells with target cell
+        # weights add up to 1 for every i
+        weights = torch.div(torch.tensor(weights_dict[i], dtype = float), weight_normaliser).unsqueeze(-1)
+
+        # Extract columns based on covariance_index_dict to get tensor of shape [hr_dims_flat, n]  
+        # where n can vary based on the num over overlapping grid cells
+        # Use only first dim of hr_matrix and all rows.
+        column_vectors = hr_matrix[0, :, covariance_indices_dict[i]].double()
+
+        aggregated_column_vector = torch.matmul(column_vectors, weights)
+        
+        # Concat with empty tensor
+        k_ah_al_tensor = torch.cat((k_ah_al_tensor, aggregated_column_vector), dim = 1)
+    
+    ###############
+    ### k_al_al ###
+    ###############
+
+    # Transpose so shape is [lr_dims_flat, hr_dims_flat]
+    k_ah_al_tensor_transpose = torch.transpose(k_ah_al_tensor, dim0 = 1, dim1 = 0)
+
+    # Initilise new empty tensor with correct number of rows
+    k_al_al_tensor = torch.empty(size = (lr_dims_flat, 0))
+
+    for i in range(0, lr_dims_flat):
+        # Normaliser is the area of the grid cell (constant for regular grids)
+        weight_normaliser = torch.sum(torch.tensor(weights_dict[i], dtype = float))
+        # Normlised weights: torch.Size([n, 1]) where n can vary based on the number over overlapping grid cells with current cell
+        # Add up to 1
+        weights = torch.div(torch.tensor(weights_dict[i], dtype = float), weight_normaliser).unsqueeze(-1)
+
+        # Extract columns based on covariance_index_dict to get tensor of shape [lr_dims_flat, n] 
+        # where n can vary based on the num over overlapping grid cells
+        column_vectors = k_ah_al_tensor_transpose[:, covariance_indices_dict[i]]
+        aggregated_column_vector = torch.matmul(column_vectors, weights)
+
+        # Concat with empty tensor
+        k_al_al_tensor = torch.cat((k_al_al_tensor, aggregated_column_vector), dim = 1)
+
+    return k_ah_al_tensor, k_al_al_tensor

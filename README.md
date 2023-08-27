@@ -31,7 +31,9 @@ Data fusions of high-resolution gridded data with low-resolutions gridded data w
     - Note: Ice flow velocity derived from satellite interferometry (Rignot et al., 2011; Mouginot et al., 2017).
 
 ## Next steps:
-- Organise code repository, 
+- Organise code repository
+  - put functions into separete files
+  - explain key files and structure
 - Use auxiliary high-resolution surface data to downscale ice velocity (1 to 1) (currently using surface to increase bedrock resolution)
   - Integrate auxiliary high-resolution bed data
 - LML for parameters
@@ -59,18 +61,13 @@ Data fusions of high-resolution gridded data with low-resolutions gridded data w
   - Also used in DeepBedMap
 
 ## Notes (to myself)
-- Which year to use:
-- Use 2016 data since this is the latest common denominator
-  - Change to 2015 potentially
-- Booth datasets are provided on [WGS 84 / Antarctic Polar Stereographic EPSG:3031](https://epsg.io/3031)
-- create a new complimentary modality
-- Limitation paper: subdivision
+- Year selection:
+    - 2015 is the nominal year of REMA used in BedMachine
+- both datasets are provided on [WGS 84 / Antarctic Polar Stereographic EPSG:3031](https://epsg.io/3031)
 - images were artificially downsampled by a range of magnification factors to construct a controlled testing scenario.
-- Average pooling is the same as magnifying
+- average pooling is the same as magnifying
 - Visualise lr input, hr input, output
-- Visualise kernel components
 - Compare to setconv/density channels
-- Extend to disjoint grids
 - role of geophysical data e.g. altitude
 - Use surface elevation to improve resolution of ice flow: measured in 2 directions
   - Physics informed kernel?
@@ -84,7 +81,8 @@ Data fusions of high-resolution gridded data with low-resolutions gridded data w
 - Name of paper: "Melting moments - derivate kernel fusion"
 - Use noise values from dataset
 - Investigate vanishing covariance with pooling over larger area (downscaling factor large)
-
+- "Mass conserving" approaches more akin to dynamical downscaling. frame as Physics informed Neural Networks (PINNS). equilibrium. maybe left-stochastic matrices (from MC-LSTMs)
+- Bilinear
   
 
 High-res data sets can be considered auxiliary datasets: Use multiple aux. data streams (potentially on different resolutions) to refine the low-res. channel: 
