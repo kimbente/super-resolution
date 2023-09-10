@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+import math
 
 ###############
 ### WRAPPER ###
@@ -41,7 +42,8 @@ def covariance_function(kp_ds, lambda_s = 0.3, lambda_p = 0.4, sigma_f = 1.0):
     kp_covar_matrix = kp_covariance_function(kp_input, lambda_p = lambda_p)
     
     # Return components as well
-    return (ks_covar_matrix.detach().numpy() * kp_covar_matrix.detach().numpy() * sigma_f)
+    # return torch.mul(torch.matmul(ks_covar_matrix, kp_covar_matrix), sigma_f)
+    return torch.tensor((ks_covar_matrix.detach().numpy() * kp_covar_matrix.detach().numpy() * sigma_f))
 
 #########################
 ### Spatial component ###
@@ -397,6 +399,52 @@ def aggregate_base_covariance_matrix(hr_matrix, lr_2D):
 
     return k_ah_al_tensor, k_al_al_tensor
 
+### SUBSET CASE ###
+
+def aggregate_columns_rows_subsetcase(base_covariance, u):
+    # hr (target) HW is the squareroot of the last dim of the base covariance
+    hr_hw = int(np.sqrt(base_covariance.shape[-1])) # e.g. 60
+    lr_hw = int(hr_hw / u) # e.g. 30
+    lr_indices_list = range(0, lr_hw**2) # covariance has square indices (pairwise)
+
+    # includes 0 and last index and intevals are u * hr_hw wide
+    lr_row_breaks = np.linspace(0, hr_hw**2, num = int(lr_hw + 1), dtype = int)
+
+    # Initialise empty dictionary
+    lrDict = dict()
+    # start with -1 as it will be updated in first it.
+    lr_row_counter = -1
+
+    for i in lr_indices_list:
+
+        # column counter per row
+        j = i%lr_hw
+
+        # check for row breaks
+        if j == 0:
+            lr_row_counter += 1
+            row_base = lr_row_breaks[lr_row_counter]
+
+        lr_ranges_list = []
+        for w in range(0, u):
+            # each list is spanning upscaling_factor rows with upscaling_factor elements each
+            lr_ranges_list.extend(range((j * u + (w * hr_hw) + row_base), (j * u + (w * hr_hw) + u + row_base)))
+
+        lrDict[i] = lr_ranges_list
+
+    agg_tensor_k_ah_al = torch.empty(size = (hr_hw**2, lr_hw**2))
+    agg_tensor_k_al_al = torch.empty(size = (lr_hw**2, lr_hw**2))
+
+    # go column by column
+    for col_ind in lr_indices_list:
+        agg_tensor_k_ah_al[:, col_ind] = torch.mean((base_covariance[:, lrDict[col_ind]]), dim = 1)
+    
+    # Repeat on transposed output agg_tensor_k_ah_al
+    for col_ind in lr_indices_list:
+        agg_tensor_k_al_al[:, col_ind] = torch.mean((torch.transpose(agg_tensor_k_ah_al, dim0 = 1, dim1 = 0)[:, lrDict[col_ind]]), dim = 1)
+        
+    return agg_tensor_k_ah_al, agg_tensor_k_al_al 
+
 #######################
 ### PREDICTIVE MEAN ###
 #######################
@@ -419,9 +467,172 @@ def predictive_mean(lr_variable_channel, k_ah_al, k_al_al, noise = 0.05, mu = 0.
 
     # Get shape from W
     # Error with data type
-    hr_inference_adjusted = torch.div(torch.matmul(W, pl_al_minus_mu.reshape(-1).unsqueeze(1).double()), torch.matmul(W, torch.ones(size = (W.shape[-1], 1)).double())) + mu
+    hr_inference_adjusted = torch.div(torch.matmul(W.double(), pl_al_minus_mu.reshape(-1).unsqueeze(1).double()), torch.matmul(W.double(), torch.ones(size = (W.shape[-1], 1)).double())) + mu
 
     # Cast into 2D shape
     hr_inference_2D = hr_inference_adjusted.reshape(int(np.sqrt(hr_inference_adjusted.shape[0])), -1)
+    # t.view((int(math.sqrt(t.shape[0])), int(math.sqrt(t.shape[0]))))
 
     return(hr_inference_2D)
+
+def predictive_variance(base_covariance, k_ah_al, k_al_al, noise = 0.05):
+    # Assure they are tensors
+    base_covariance = torch.tensor(base_covariance)
+    k_ah_al = torch.tensor(k_ah_al)
+    k_al_al = torch.tensor(k_al_al)
+
+    k_inv = torch.linalg.inv(k_al_al + (torch.eye(n = k_al_al.shape[-1]) * noise))
+    sigma = base_covariance - torch.matmul(k_ah_al, torch.matmul(k_inv, torch.transpose(k_ah_al, dim0 = 1, dim1 = 0)))
+    return sigma
+
+
+def predictive_distribution(lr_variable_channel, k_ah_ah, k_ah_al, k_al_al, noise = 0.05, mu = 0.5):
+    """Combine mean and variance generation into one
+
+    Args:
+        lr_variable_channel (_type_): _description_
+        k_ah_ah (_type_): _description_
+        k_ah_al (_type_): _description_
+        k_al_al (_type_): _description_
+        noise (float, optional): _description_. Defaults to 0.05.
+        mu (float, optional): _description_. Defaults to 0.5.
+
+    Returns:
+        _type_: _description_
+    """
+    # Calculate inverse once. Replace with cholesky
+    k_inv = torch.linalg.inv(k_al_al + (torch.eye(n = k_al_al.shape[-1]) * noise))
+    
+    #### Mean ###
+    pl_al_minus_mu = lr_variable_channel - torch.ones(size = lr_variable_channel.shape) * mu
+    W = torch.matmul(k_ah_al, k_inv) 
+    mean_flat = torch.div(torch.matmul(W, pl_al_minus_mu.reshape(-1).unsqueeze(1)), torch.matmul(W, torch.ones(size = (W.shape[-1], 1)))) + mu
+    # cast into 2D shape
+    mean = mean_flat.reshape(int(np.sqrt(mean_flat.shape[0])), -1)
+
+    ### Sigma ###
+    # .mT transposes the last two dims of a matrix
+    sigma = k_ah_ah - torch.matmul(k_ah_al, torch.matmul(k_inv, k_ah_al.mT))
+
+    return mean, sigma
+
+###############################
+### CHOLESKY to speed it up ###
+###############################
+# see Rasmussen & Williams Algorithm 2.1 
+
+def predictive_distribution_cholesky(lr_variable_channel, k_ah_ah, k_ah_al, k_al_al, noise = 0.05, mu = 0.5):
+    """Combine mean and variance generation into one.
+    Following the algorithm in Rasmussen 2.1 and https://gregorygundersen.com/blog/2019/09/12/practical-gp-regression/
+    no correction
+
+    Args:
+        lr_variable_channel (_type_): _description_
+        k_ah_ah (_type_): _description_
+        k_ah_al (_type_): _description_
+        k_al_al (_type_): _description_
+        noise (float, optional): _description_. Defaults to 0.05.
+        mu (float, optional): _description_. Defaults to 0.5.
+
+    Returns:
+        _type_: _description_
+    """
+    # Lower triangular Cholesky decomposition
+    L = torch.linalg.cholesky(k_al_al + (torch.eye(n = k_al_al.shape[-1]) * noise)).unsqueeze(0)
+    
+    #### Mean ###
+    pl_al_minus_mu = lr_variable_channel - torch.ones(size = lr_variable_channel.shape) * mu
+
+    # debug
+
+    # https://pytorch.org/docs/stable/generated/torch.cholesky_solve.html
+    # Solve linear system instead of inversion: 
+    # Input1: torch.Size([1, 900, 1]), Input2: torch.Size([1, 900, 900])
+    alpha = torch.cholesky_solve(pl_al_minus_mu.reshape(-1).unsqueeze(1).unsqueeze(0), L, upper = False)
+    # alpha shape torch.Size([1, 900, 1])
+
+    print(k_ah_al.shape)
+    print(alpha.shape)
+
+    # No correction
+    mean_flat = torch.matmul(k_ah_al.unsqueeze(0), alpha) + mu
+    # cast into 2D shape
+    batch_size = 1
+    mean = mean_flat.reshape(batch_size, int(np.sqrt(mean_flat.shape[1])), -1)
+
+    print(mean_flat.shape)
+    print(mean.shape)
+
+    ### Sigma ###
+    v = torch.cholesky_solve(k_ah_al.mT, L, upper = False)
+    # .mT transposes the last two dims of a matrix
+    sigma = k_ah_ah - torch.matmul(k_ah_al, v)
+
+    ### LML ###
+    # 2.30 in Rasmussen
+    # https://d2l.ai/chapter_gaussian-processes/gp-inference.html
+    
+    # Term1: Kernel term
+    term1 = torch.mul(torch.matmul(lr_variable_channel.mT.reshape(1, -1), alpha), 0.5)
+    
+    # Term2: Determinant term. 2 and 0.5 cancel each other out, sum in log space, log makes values negative
+    term2 = torch.sum(torch.log(torch.diagonal(L)))
+    # Need trick https://math.stackexchange.com/questions/3158303/using-cholesky-decomposition-to-compute-covariance-matrix-determinant
+    # Does not work: term2 = torch.mul(torch.log(torch.linalg.det(k_al_al + (torch.eye(n = k_al_al.shape[-1]) * noise))), 0.5).reshape(1, 1)
+    # Flatten shape and extract n, natural log
+    
+    # Term3: Constant term
+    term3 = torch.tensor(torch.log(torch.tensor(2 * math.pi)) * torch.tensor(lr_variable_channel.reshape(-1).shape[0] * 0.5)).reshape((1, 1)) # n
+    lml = - term1 - term2 - term3
+
+    return mean, sigma, lml
+
+def predictive_distribution_cholesky_correction(lr_variable_channel, k_ah_ah, k_ah_al, k_al_al, noise = 0.05, mu = 0.5, batch_size = 1):
+    """Combine mean and variance generation into one
+
+    Args:
+        lr_variable_channel (_type_): _description_
+        k_ah_ah (_type_): _description_
+        k_ah_al (_type_): _description_
+        k_al_al (_type_): _description_
+        noise (float, optional): _description_. Defaults to 0.05.
+        mu (float, optional): _description_. Defaults to 0.5.
+
+    Returns:
+        _type_: _description_
+    """
+    # Calculate inverse via the Cholesky decomposition (Lower Triangular)
+    L = torch.linalg.cholesky(k_al_al + (torch.eye(n = k_al_al.shape[-1]) * noise))
+    k_inv = torch.cholesky_inverse(L)
+    
+    #### Mean ###
+    pl_al_minus_mu = lr_variable_channel - torch.ones(size = lr_variable_channel.shape) * mu
+    W = torch.matmul(k_ah_al, k_inv) 
+
+    # Correction
+    mean_flat = torch.div(torch.matmul(W, pl_al_minus_mu.reshape(-1).unsqueeze(1)), torch.matmul(W, torch.ones(size = (W.shape[-1], 1)))) + mu
+    # cast into 2D shape
+    mean = mean_flat.reshape(batch_size, int(np.sqrt(mean_flat.shape[0])), -1)
+
+    ### Sigma ###
+    # .mT transposes the last two dims of a matrix
+    sigma = k_ah_ah - torch.matmul(k_ah_al, torch.matmul(k_inv, k_ah_al.mT))
+
+    ### LML ###
+    # 2.30 in Rasmussen
+    # https://d2l.ai/chapter_gaussian-processes/gp-inference.html
+    
+    # Term1: Kernel term
+    term1 = torch.mul(torch.matmul(lr_variable_channel.mT.reshape(1, -1), torch.matmul(k_inv, lr_variable_channel.reshape(-1, 1))), 0.5)
+    
+    # Term2: Determinant term. 2 and 0.5 cancel each other out, sum in log space, log makes values negative
+    term2 = torch.sum(torch.log(torch.diagonal(L)))
+    # Need trick https://math.stackexchange.com/questions/3158303/using-cholesky-decomposition-to-compute-covariance-matrix-determinant
+    # Does not work: term2 = torch.mul(torch.log(torch.linalg.det(k_al_al + (torch.eye(n = k_al_al.shape[-1]) * noise))), 0.5).reshape(1, 1)
+    # Flatten shape and extract n, natural log
+    
+    # Term3: Constant term
+    term3 = (torch.log(torch.tensor(2 * math.pi)) * torch.tensor(lr_variable_channel.reshape(-1).shape[0] * 0.5)).reshape((1, 1)) # n
+    lml = - term1 - term2 - term3
+
+    return mean, sigma, lml
