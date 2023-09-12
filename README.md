@@ -31,9 +31,11 @@ Data fusions of high-resolution gridded data with low-resolutions gridded data w
     - Note: Ice flow velocity derived from satellite interferometry (Rignot et al., 2011; Mouginot et al., 2017).
 
 ## Next steps:
+- Baseline does not change so store externally?
 - Organise code repository
   - put functions into separete files
   - explain key files and structure
+  - write class with functions
 - Use auxiliary high-resolution surface data to downscale ice velocity (1 to 1) (currently using surface to increase bedrock resolution)
   - Integrate auxiliary high-resolution bed data
 - LML for parameters
