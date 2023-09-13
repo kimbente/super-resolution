@@ -68,7 +68,7 @@ def ks_covariance_function(tensor, lambda_value = 0.2):
     dist = tensor.unsqueeze(-1) - tensor.unsqueeze(-2)
     dist_sqr = torch.pow(dist, exponent = 2)
     # sum across x and y axis
-    dist_sum = torch.sum(dist_sqr, dim = 0)
+    dist_sum = torch.sum(dist_sqr, dim = 0) # dims we want to reduce
     # take sqrt
     euc_dist = torch.sqrt(dist_sum)
     

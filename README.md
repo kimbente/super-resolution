@@ -31,6 +31,10 @@ Data fusions of high-resolution gridded data with low-resolutions gridded data w
     - Note: Ice flow velocity derived from satellite interferometry (Rignot et al., 2011; Mouginot et al., 2017).
 
 ## Next steps:
+- Scaling:
+  - MinMax to fall between 0 and 1 but range is very large
+  - meaning of negative values lost
+- Focus on mountainour region
 - Baseline does not change so store externally?
 - Organise code repository
   - put functions into separete files
