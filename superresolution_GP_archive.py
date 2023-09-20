@@ -393,6 +393,11 @@ class SuperresolutionGP_lowerRAM:
 
         return upfactors_n_mean, upfactors_n_covariance, upfactors_n_lml
 
+###################
+###################
+### 2nd version ###
+###################
+###################
 
 class SuperresolutionGP:
     # Initialise with training data tensor/test tensor
